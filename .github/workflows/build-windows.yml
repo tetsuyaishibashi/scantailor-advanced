@@ -1,0 +1,79 @@
+# Windows build of ScanTailor Advanced (MSYS2 / MinGW-w64, Qt6)
+# 置き場所: フォークしたリポジトリの .github/workflows/build-windows.yml
+# 実行方法: Actions タブ → "Build Windows" → Run workflow
+name: Build Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag or branch to build"
+        default: "v1.2.1"
+        required: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-qt6-base
+            mingw-w64-x86_64-qt6-svg
+            mingw-w64-x86_64-qt6-tools
+            mingw-w64-x86_64-qt6-translations
+            mingw-w64-x86_64-boost
+            mingw-w64-x86_64-libjpeg-turbo
+            mingw-w64-x86_64-libpng
+            mingw-w64-x86_64-libtiff
+            mingw-w64-x86_64-zlib
+            zip
+
+      # CMakeLists.txt は Release ビルドに -march=native を付ける。
+      # GitHub のサーバーの CPU 専用の命令が混ざり、他の PC で起動しなくなるのを避けるため外す。
+      - name: Remove -march=native
+        run: |
+          sed -i 's/-march=native;-mtune=native/-mtune=generic/' CMakeLists.txt
+          grep -n "mtune" CMakeLists.txt
+
+      - name: Configure
+        run: |
+          cmake -G Ninja -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTS=OFF \
+            -DBOOST_ROOT="$(cygpath -m /mingw64)"
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Install and deploy Qt
+        run: |
+          cmake --install build --prefix "$PWD/dist"
+          ls -la dist
+          WDQ=$(ls /mingw64/bin | grep -i '^windeployqt' | head -1)
+          echo "using $WDQ"
+          "/mingw64/bin/$WDQ" --release --no-translations dist/scantailor-advanced.exe || true
+          ls -la dist
+
+      - name: Package
+        run: |
+          mv dist ScanTailor-Advanced-${{ inputs.ref }}-win64
+          zip -r ScanTailor-Advanced-${{ inputs.ref }}-win64.zip ScanTailor-Advanced-${{ inputs.ref }}-win64
+          sha256sum ScanTailor-Advanced-${{ inputs.ref }}-win64.zip
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ScanTailor-Advanced-${{ inputs.ref }}-win64
+          path: ScanTailor-Advanced-${{ inputs.ref }}-win64.zip
