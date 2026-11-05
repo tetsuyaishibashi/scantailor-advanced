@@ -48,6 +48,13 @@ jobs:
           sed -i 's/-march=native;-mtune=native/-mtune=generic/' CMakeLists.txt
           grep -n "mtune" CMakeLists.txt
 
+      # cmake/CopyToBuildDir.cmake が実行ファイルのターゲット名を "scantailor" と固定している。
+      # 実際の名前は "scantailor-advanced" なので、Windows ビルドの設定段階でエラーになる。それを直す。
+      - name: Fix target name in CopyToBuildDir.cmake
+        run: |
+          sed -i 's/TARGET_FILE_DIR:scantailor>/TARGET_FILE_DIR:scantailor-advanced>/' cmake/CopyToBuildDir.cmake
+          grep -n "TARGET_FILE_DIR" cmake/CopyToBuildDir.cmake
+
       - name: Configure
         run: |
           cmake -G Ninja -B build \
