@@ -78,16 +78,23 @@ jobs:
       # JPEG/PNG/TIFF/zlib の DLL が入らない。ldd で依存 DLL を調べ、まとめてコピーする。
       - name: Bundle dependent DLLs
         run: |
+          # このシェルは「どれか1つでも失敗したら止まる」設定。
+          # 依存 DLL が1つも見つからないファイルがあっても止まらないよう、失敗を無視する形で書く。
+          deps() { ldd "$1" 2>/dev/null | awk '/\/mingw64\/bin\// {print $3}' || true; }
+          copy_deps() {
+            while read -r d; do
+              [ -n "$d" ] || continue
+              [ -e "dist/$(basename "$d")" ] || cp "$d" dist/
+            done
+          }
           for f in $(find dist -type f \( -name '*.exe' -o -name '*.dll' \)); do
-            ldd "$f" | grep -i '/mingw64/bin/' | awk '{print $3}'
-          done | sort -u | while read -r d; do
-            cp -n "$d" dist/
-          done
-          # コピーした DLL がさらに必要とする DLL も拾う（2周目）
-          for f in $(find dist -maxdepth 1 -type f -name '*.dll'); do
-            ldd "$f" | grep -i '/mingw64/bin/' | awk '{print $3}'
-          done | sort -u | while read -r d; do
-            cp -n "$d" dist/
+            deps "$f"
+          done | sort -u | copy_deps
+          # コピーした DLL がさらに必要とする DLL も拾う（2周目、3周目）
+          for round in 2 3; do
+            for f in $(find dist -maxdepth 1 -type f -name '*.dll'); do
+              deps "$f"
+            done | sort -u | copy_deps
           done
           echo "--- dist contents ---"
           find dist -type f | sort
