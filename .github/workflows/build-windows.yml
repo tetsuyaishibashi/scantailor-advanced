@@ -74,6 +74,28 @@ jobs:
           "/mingw64/bin/$WDQ" --release --no-translations dist/scantailor-advanced.exe || true
           ls -la dist
 
+      # CMake の DLL 収集は、MSYS2 の DLL 名（libjpeg-8.dll など）と合わず、
+      # JPEG/PNG/TIFF/zlib の DLL が入らない。ldd で依存 DLL を調べ、まとめてコピーする。
+      - name: Bundle dependent DLLs
+        run: |
+          for f in $(find dist -type f \( -name '*.exe' -o -name '*.dll' \)); do
+            ldd "$f" | grep -i '/mingw64/bin/' | awk '{print $3}'
+          done | sort -u | while read -r d; do
+            cp -n "$d" dist/
+          done
+          # コピーした DLL がさらに必要とする DLL も拾う（2周目）
+          for f in $(find dist -maxdepth 1 -type f -name '*.dll'); do
+            ldd "$f" | grep -i '/mingw64/bin/' | awk '{print $3}'
+          done | sort -u | while read -r d; do
+            cp -n "$d" dist/
+          done
+          echo "--- dist contents ---"
+          find dist -type f | sort
+          echo "--- missing dependencies (should be empty) ---"
+          for f in $(find dist -type f \( -name '*.exe' -o -name '*.dll' \)); do
+            ldd "$f" | grep -i 'not found' || true
+          done
+
       - name: Package
         run: |
           mv dist ScanTailor-Advanced-${{ inputs.ref }}-win64
